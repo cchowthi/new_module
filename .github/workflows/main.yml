@@ -1,0 +1,62 @@
+name: CD - Package and load to master repo
+
+on:
+  push:
+    branches: [ main ]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.repository != 'cchowthi/gilead_module_template'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: main
+
+      - name: Get requirements
+        uses: actions/checkout@v2
+        with:
+          repository: cchowthi/m-mkvenv
+          token: ${{ secrets.global_pat }}
+          path: m-mkvenv
+ 
+      - name: Checkout destination repo
+        uses: actions/checkout@v2
+        with:
+          repository: cchowthi/modules
+          token: ${{ secrets.global_pat }}
+          path: modules
+          
+      - name: Install Python 3
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.6
+
+      - name: Create python module.
+        run: |
+          python -m pip install --upgrade pip
+          pip install wheel
+          cd main/deploy
+          python setup.py sdist bdist_wheel
+          cd dist
+          latest=$(ls -t *gz | head -n1)
+          echo Latest distribution is $latest
+          module=${latest%-*}
+          echo Replacing the previous $module module with the latest
+          rm -f ../../../modules/$module*gz
+          cp $latest ../../../modules
+          
+      - name: Commit to destination repo
+        run: |
+          cd modules
+          ls -l
+          git config --global user.name "${{ secrets.global_name }}"
+          git config --global user.email  "${{ secrets.global_email }}"
+          git fetch
+          git checkout main
+          git add .
+          git commit -m "Automatic update of master module repo"
+          git push
